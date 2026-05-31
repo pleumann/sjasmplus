@@ -264,6 +264,44 @@ jobs:
       - name: Unit tests
         run: make clean && make -j$(sysctl -n hw.logicalcpu) CC=cc CXX=c++ tests
 
+  # Cross-compile for Raspberry Pi Zero (ARM1176JZF-S / ARMv6 hard-float).
+  # Uses system Lua 5.3 (armhf multiarch) rather than the bundled Lua 5.5 so
+  # that the resulting binary is compatible with the version of Lua shipped by
+  # Raspberry Pi OS for the Pi Zero.  The produced binary is a 32-bit ARMv6
+  # ELF and dynamically links liblua5.3 -- install liblua5.3-0 on the Pi.
+  rpi-zero:
+    name: Raspberry Pi Zero (armv6, Lua 5.3)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+        with:
+          submodules: true
+      - name: Set up armhf multiarch and install cross-toolchain + Lua 5.3 dev
+        run: |
+          sudo dpkg --add-architecture armhf
+          sudo apt-get update -qq
+          sudo apt-get install -y \
+            gcc-arm-linux-gnueabihf \
+            g++-arm-linux-gnueabihf \
+            liblua5.3-dev:armhf
+      - name: Cross-compile (armv6, Lua 5.3)
+        run: |
+          make clean && make -j$(nproc) \
+            CC=arm-linux-gnueabihf-gcc \
+            CXX=arm-linux-gnueabihf-g++ \
+            STRIP=arm-linux-gnueabihf-strip \
+            CFLAGS_EXTRA='-mcpu=arm1176jzf-s -mfpu=vfp -mfloat-abi=hard' \
+            USE_BUNDLED_LUA=0 \
+            LUA_VER=5.3
+      - name: Verify target architecture
+        run: file sjasmplus
+      - name: Upload sjasmplus binary
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
+        with:
+          name: sjasmplus-rpi-zero
+          path: sjasmplus
+          if-no-files-found: error
+
   # Cirrus: coveralls.io pipe (gcc:14, DEBUG=1, make coverage).
   # The Cirrus version was hard-gated to z00m128's repo + encrypted token and
   # skipped on PRs. Here the coverage *build+tests* always run (extra signal,
